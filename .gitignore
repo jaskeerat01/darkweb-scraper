@@ -1,0 +1,33 @@
+# Virtual environment & Python artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+
+# Environment configuration
+.env
+.env.example
+
+# Local LLM weights and models
+*.gguf
+models/
+models/*.gguf
+
+# Databases and runtime data
+*.db
+*.db-wal
+*.db-shm
+alerts.db*
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/alerts.db*
+
+# Scraper targets list
+forum_sites.csv
+data/forum_sites.csv
