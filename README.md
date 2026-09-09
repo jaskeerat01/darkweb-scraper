@@ -257,3 +257,17 @@ pytest tests -v
 * **Expanded Alerting Channels:** Support for Discord webhooks, Slack channels, and direct email delivery.
 * **Threat Intel Standards Export:** Add export pipelines for STIX 2.1 and TAXII formats to share data with external SIEM platforms.
 * **Custom Rule Engine:** Allow users to define custom matching patterns and severity scores per monitored threat group.
+
+---
+
+## Disclaimer
+
+> [!CAUTION]
+> **For Educational, Defensive Security, and Threat Intelligence Research Only**
+>
+> This software is intended strictly for authorized threat intelligence collection, defensive cybersecurity monitoring, and educational or academic research.
+
+* **Compliance with Applicable Laws:** Accessing and crawling dark web resources, Tor onion hidden services, and related networks may be subject to local, state, national, and international laws and regulations. You are solely responsible for ensuring that your usage complies with all legal, regulatory, and institutional guidelines in your jurisdiction.
+* **Tor & Dark Web Risks:** The dark web contains unindexed, unmoderated services operated by anonymous or hostile entities. Interacting with these networks carries inherent operational and safety risks, including exposure to malicious content, exploit kits, fraudulent schemes, or illegal material. Do not attempt to access, download, distribute, or store prohibited or illicit materials.
+* **Operational Security (OpSec):** Ensure appropriate operational security practices, network isolation, host hardening, and firewall configurations before deploying this tool on any infrastructure.
+* **Limitation of Liability:** This project is provided "as is" without warranty of any kind, express or implied. The developers and contributors assume no liability and are not responsible for any misuse, damage, legal repercussions, data loss, or operational disruptions resulting from the use of this software.
