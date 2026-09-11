@@ -189,48 +189,21 @@ sudo systemctl restart darkweb-scraper
 sudo systemctl stop darkweb-scraper
 ```
 
-### Running Continuously (Daemon Mode)
+### Running Manually
 
-To run the full background scheduler manually in your terminal:
+If you prefer to run the scraper manually once in a while rather than keeping a background service active:
 
 ```bash
 # Activate the virtual environment
 source .venv/bin/activate
 
-# Launch continuous scheduler via module or main script
+# Launch the scraper directly
 python3 -m scraper
 # or
 ./main.py
 ```
 
-### Running on Demand (Single-Run Mode)
-
-If you prefer to run the scraper once in a while rather than keeping a background service running continuously, use the `--once` flag:
-
-```bash
-# Activate the virtual environment
-source .venv/bin/activate
-
-# Execute a single health check and scraping pass, then exit
-python3 -m scraper --once
-# or
-./main.py --once
-```
-
-What the single run does:
-1. Validates Tor connectivity and tests whether monitored onion sites are currently online.
-2. Crawls and scrapes all reachable targets according to your page depth and link limits.
-3. Filters text, extracts IOCs, and generates summaries using the local LLM.
-4. Stores new alerts in SQLite and flushes any pending Telegram notifications.
-5. Shuts down and exits cleanly without remaining in memory.
-
-#### Optional: Scheduling with Cron
-
-You can schedule the single-run command to execute periodically (for example, once every 6 hours):
-
-```bash
-0 */6 * * * /path/to/darkwebscraper/.venv/bin/python /path/to/darkwebscraper/main.py --once >> /path/to/darkwebscraper/data/cron.log 2>&1
-```
+When started, the engine begins its health checks and scraping passes across the target sites and keeps running cycles until stopped. You can run it whenever you wish and stop it at any time by pressing `Ctrl + C`.
 
 ---
 
