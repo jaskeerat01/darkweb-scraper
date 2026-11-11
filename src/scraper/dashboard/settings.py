@@ -103,6 +103,11 @@ class DashboardSettings:
                 "DASHBOARD_AUTH_TOKEN. Use a reverse proxy with authentication or "
                 "bind 127.0.0.1."
             )
+        if not self.loopback_only and self.auth_enabled and not self.secure_cookie:
+            raise DashboardConfigError(
+                "Non-loopback dashboards must use DASHBOARD_SECURE_COOKIE=true "
+                "behind TLS. Bind 127.0.0.1 for local HTTP access."
+            )
 
     @classmethod
     def from_env(

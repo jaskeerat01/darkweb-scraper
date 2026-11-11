@@ -150,6 +150,39 @@ def test_non_loopback_without_token_is_refused():
         _settings("data/alerts.db", host="0.0.0.0").validate()
 
 
+def test_non_loopback_with_token_requires_secure_cookie():
+    with pytest.raises(DashboardConfigError):
+        _settings(
+            "data/alerts.db",
+            host="0.0.0.0",
+            auth_token="secret-token",
+            secure_cookie=False,
+        ).validate()
+    _settings(
+        "data/alerts.db",
+        host="0.0.0.0",
+        auth_token="secret-token",
+        secure_cookie=True,
+    ).validate()
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["//evil.example", "/\\evil.example", "/%5cevil.example", "/%2f%2fevil.example"],
+)
+def test_login_next_rejects_external_redirects(temp_db, target):
+    _seed(temp_db)
+    settings = _settings(temp_db, auth_token="secret-token")
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/login",
+        data={"token": "secret-token", "next": target},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
 def test_unknown_host_is_rejected(temp_db):
     client = TestClient(create_app(_settings(temp_db)))
     response = client.get("/", headers={"Host": "evil.example"})

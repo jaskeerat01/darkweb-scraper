@@ -282,6 +282,7 @@ ssh -L 8787:127.0.0.1:8787 user@host
 
 - Default bind is `127.0.0.1:8787`.
 - Binding to a non-loopback address without `DASHBOARD_AUTH_TOKEN` is refused.
+- Non-loopback deployments must also set `DASHBOARD_SECURE_COOKIE=true` and terminate TLS at the reverse proxy.
 - Optional token login issues a signed, `HttpOnly`, `SameSite=Strict` cookie (12 h).
 - Login attempts are rate-limited in memory.
 - Strict CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, and `Cache-Control: no-store`.

@@ -40,7 +40,7 @@ def extract_first_post_element(soup: BeautifulSoup):
         container = soup.find(id="posts")
         if container is None:
             return None
-        for div in container.find_all("div", class_=True):
+        for div in container.find_all("div", class_=True, limit=5000):
             if "post" in (div.get("class") or []):
                 body = div.find("div", class_=lambda c: c is not None and "post_body" in c)
                 if body is not None:
@@ -86,7 +86,7 @@ def extract_page_links(
     links: List[Tuple[str, str]] = []
     try:
         base_host = normalize_hostname(urlparse(base_url).hostname)
-        for tag in soup.find_all(["a", "frame", "iframe"]):
+        for tag in soup.find_all(["a", "frame", "iframe"], limit=5000):
             href = (tag.get("href") or tag.get("src") or "").strip()
             if not href or href.lower().startswith(("javascript:", "mailto:", "#", "data:")):
                 continue
@@ -106,7 +106,7 @@ def extract_page_links(
             text = tag.get_text(" ", strip=True)[:300] if tag.name == "a" else ""
             links.append((absolute, text))
 
-        for meta in soup.find_all("meta", attrs={"http-equiv": True}):
+        for meta in soup.find_all("meta", attrs={"http-equiv": True}, limit=100):
             if meta.get("http-equiv", "").lower() != "refresh":
                 continue
             content = meta.get("content", "")

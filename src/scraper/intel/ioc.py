@@ -22,6 +22,10 @@ IOC_PATTERN_STRINGS = (
 
 IOC_PATTERNS = tuple(re.compile(pattern) for pattern in IOC_PATTERN_STRINGS)
 
+MAX_IOCS = 250
+MAX_IOC_LENGTH = 512
+MAX_IOC_SCAN_CHARS = 512 * 1024
+
 CONTACT_LINK_RE = re.compile(
     r'(?:t\.me|telegram\.me)/([A-Za-z0-9_]{5,32})'
     r'|mailto:([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})'
@@ -35,11 +39,15 @@ CONTACT_LINK_RE = re.compile(
 def extract_iocs(text: str) -> List[str]:
     """Identify crypto wallets, handles, hashes, emails, and onion addresses."""
     found: dict[str, None] = {}
+    haystack = (text or "")[:MAX_IOC_SCAN_CHARS]
     for pattern in IOC_PATTERNS:
-        for match in pattern.finditer(text or ""):
+        for match in pattern.finditer(haystack):
             value = (match.group(1) if match.groups() else match.group(0)).strip()
-            if len(value) >= 5:
-                found.setdefault(value, None)
+            if not (5 <= len(value) <= MAX_IOC_LENGTH):
+                continue
+            found.setdefault(value, None)
+            if len(found) >= MAX_IOCS:
+                return list(found)
     return list(found)
 
 
@@ -47,13 +55,15 @@ def extract_contact_links(soup: BeautifulSoup) -> List[str]:
     """Extract contact handles directly from anchor href attributes."""
     found: dict[str, None] = {}
     try:
-        for tag in soup.find_all("a", href=True):
+        for tag in soup.find_all("a", href=True, limit=5000):
             match = CONTACT_LINK_RE.search(tag.get("href") or "")
             if not match:
                 continue
             value = next((group for group in match.groups() if group), "").strip()
-            if len(value) >= 5:
+            if 5 <= len(value) <= MAX_IOC_LENGTH:
                 found.setdefault(value, None)
+                if len(found) >= MAX_IOCS:
+                    break
     except Exception:
         pass
     return list(found)

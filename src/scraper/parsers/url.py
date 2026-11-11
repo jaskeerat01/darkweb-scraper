@@ -97,6 +97,8 @@ def sanitize_url_for_storage(url: str) -> str:
 
 def normalize_page_url(url: str) -> str:
     try:
+        if not url or len(str(url)) > 4096:
+            return ""
         url, _ = urldefrag(str(url).strip())
         p = urlparse(url)
         if not p.scheme or not p.hostname:

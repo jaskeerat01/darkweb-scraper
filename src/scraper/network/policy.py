@@ -117,6 +117,11 @@ def is_allowed_target_url(url: str, config: Config | None = None) -> bool:
     plus either an allowlist entry or the explicit ``CLEARNET_ALLOW_ANY`` flag.
     Private, loopback, link-local and single-label hosts are always rejected.
     """
+    if not isinstance(url, str) or not url or len(url) > 4096:
+        return False
+    if any(char in url for char in ("\\", "\x00", "\n", "\r", "\t")):
+        return False
+
     cfg = config
     if cfg is None:
         from scraper.config import CONFIG
@@ -133,7 +138,7 @@ def is_allowed_target_url(url: str, config: Config | None = None) -> bool:
         return False
     if not hostname:
         return False
-    if username or password:
+    if "@" in parsed.netloc or username or password:
         # Embedded credentials must never reach a target or a log line.
         return False
     if any(ch.isspace() for ch in hostname):

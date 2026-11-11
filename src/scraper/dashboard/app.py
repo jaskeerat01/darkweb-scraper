@@ -77,7 +77,9 @@ def _relative(value: Any) -> str:
 def _safe_next(value: str | None) -> str:
     if not value or not value.startswith("/") or value.startswith("//"):
         return "/"
-    if "\\" in value or "\n" in value or "\r" in value:
+    if "%" in value or "\\" in value:
+        return "/"
+    if any(ord(char) < 32 for char in value):
         return "/"
     return value
 
@@ -148,10 +150,19 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     @app.middleware("http")
     async def auth_and_headers(request: Request, call_next):
         path = request.url.path
+        suspicious_path = (
+            ".." in path
+            or "%2e" in path.lower()
+            or "%2f" in path.lower()
+            or "%5c" in path.lower()
+        )
         exempt = (
-            path == "/login"
-            or path == "/healthz"
-            or path.startswith("/static/")
+            not suspicious_path
+            and (
+                path == "/login"
+                or path == "/healthz"
+                or path.startswith("/static/")
+            )
         )
         if cfg.auth_enabled and not exempt:
             if not verify_session(request.cookies.get(COOKIE_NAME), cfg.auth_token):
@@ -460,8 +471,35 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
                     status_code=403,
                 )
 
-        body = (await request.body()).decode("utf-8", errors="ignore")
-        form = parse_qs(body)
+        content_length = request.headers.get("content-length", "")
+        if content_length:
+            try:
+                if int(content_length) > 8192:
+                    return render(
+                        request,
+                        "login.html",
+                        {"next": "/", "error": "Request is too large."},
+                        status_code=413,
+                    )
+            except ValueError:
+                return render(
+                    request,
+                    "login.html",
+                    {"next": "/", "error": "Invalid request."},
+                    status_code=400,
+                )
+
+        body_bytes = bytearray()
+        async for chunk in request.stream():
+            if len(body_bytes) + len(chunk) > 8192:
+                return render(
+                    request,
+                    "login.html",
+                    {"next": "/", "error": "Request is too large."},
+                    status_code=413,
+                )
+            body_bytes.extend(chunk)
+        form = parse_qs(bytes(body_bytes).decode("utf-8", errors="ignore"))
         candidate = (form.get("token") or [""])[0]
         next_url = _safe_next((form.get("next") or ["/"])[0])
 

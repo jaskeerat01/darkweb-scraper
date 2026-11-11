@@ -58,7 +58,8 @@ echo -e "${BOLD}${CYAN}=========================================================
 echo -e "${BOLD}${CYAN}      DARK WEB THREAT INTEL ENGINE                              ${NC}" >&2
 echo -e "${BOLD}${CYAN}================================================================${NC}" >&2
 
-read -r -p "Enter Tor Control Password (press ENTER to auto-generate): " USER_TOR_PW
+read -r -s -p "Enter Tor Control Password (press ENTER to auto-generate): " USER_TOR_PW
+echo "" >&2
 if [ -z "${USER_TOR_PW}" ]; then
     TOR_PASSWORD=$(openssl rand -hex 16)
     log_ok "Generated a secure Tor Control Password (stored in .env, not printed)."
@@ -79,7 +80,8 @@ PAGE_DEPTH=${DEPTH_INPUT:-2}
 read -r -p "Enter max pages to scrape per site [default: 50]: " PAGES_INPUT
 MAX_PAGES=${PAGES_INPUT:-50}
 
-read -r -p "Enter TELEGRAM_BOT_TOKEN (press ENTER to skip): " TG_TOKEN
+read -r -s -p "Enter TELEGRAM_BOT_TOKEN (press ENTER to skip): " TG_TOKEN
+echo "" >&2
 read -r -p "Enter TELEGRAM_CHAT_ID (press ENTER to skip): " TG_CHAT_ID
 
 read -r -p "Install the read-only web dashboard? [Y/n]: " DASH_INPUT
@@ -224,16 +226,26 @@ log_ok "Application installed in editable mode."
 log_step "Verifying Local GGUF LLM Model"
 MODEL_FILE="${APP_DIR}/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+# SHA-256 of the Qwen2.5-1.5B-Instruct Q4_K_M GGUF published by Qwen.
+MODEL_SHA256="6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
 
-if [ -f "${MODEL_FILE}" ] && [ "$(head -c 4 "${MODEL_FILE}")" = "GGUF" ]; then
+if [ -f "${MODEL_FILE}" ] && [ "$(sha256sum "${MODEL_FILE}" | awk '{print $1}')" = "${MODEL_SHA256}" ]; then
     log_ok "GGUF model binary verified at ${MODEL_FILE}"
 else
     log_info "Downloading Qwen2.5-1.5B-Instruct-GGUF to models/ ..."
-    sudo -u "${SERVICE_USER}" curl -L -C - --progress-bar -o "${MODEL_FILE}" "${MODEL_URL}"
+    rm -f "${MODEL_FILE}"
+    sudo -u "${SERVICE_USER}" curl -L --fail -C - --progress-bar -o "${MODEL_FILE}" "${MODEL_URL}"
     if [ "$(head -c 4 "${MODEL_FILE}")" != "GGUF" ]; then
         log_err "Downloaded file failed GGUF validation."
+        rm -f "${MODEL_FILE}"
         exit 1
     fi
+    if [ "$(sha256sum "${MODEL_FILE}" | awk '{print $1}')" != "${MODEL_SHA256}" ]; then
+        log_err "Downloaded model failed SHA-256 verification."
+        rm -f "${MODEL_FILE}"
+        exit 1
+    fi
+    log_ok "GGUF model downloaded and SHA-256 verified."
 fi
 
 # ==============================================================================

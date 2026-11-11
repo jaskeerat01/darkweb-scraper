@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from scraper.config import CONFIG, Config
 from scraper.network.policy import is_allowed_target_url, target_kind
-from scraper.parsers.url import is_onion_url, sanitize_url_for_storage
+from scraper.parsers.url import is_onion_url, redact_url, sanitize_url_for_storage
 from scraper.storage.db import db_connection
 
 logger = logging.getLogger("scraper")
@@ -103,7 +103,11 @@ def seed_sites_from_csv(
                 )
                 upserted += 1
             except Exception:
-                logger.warning("Failed to upsert target %s", url, exc_info=True)
+                logger.warning(
+                    "Failed to upsert target %s",
+                    redact_url(url, cfg),
+                    exc_info=True,
+                )
 
         if cfg.seed_remove_missing and seen_urls:
             placeholders = ",".join("?" for _ in seen_urls)
