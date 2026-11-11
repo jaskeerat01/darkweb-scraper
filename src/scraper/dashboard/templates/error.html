@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Error {{ status }}{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">error / {{ status }}</p>
+    <h1>{{ status }}</h1>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><span class="panel-label">request failed</span></div>
+  <div class="panel-body">
+    <p class="muted">{{ message }}</p>
+    <a class="btn btn-primary" href="/">back to alerts</a>
+  </div>
+</section>
+{% endblock %}

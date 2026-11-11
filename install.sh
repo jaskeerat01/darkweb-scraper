@@ -61,7 +61,7 @@ echo -e "${BOLD}${CYAN}=========================================================
 read -r -p "Enter Tor Control Password (press ENTER to auto-generate): " USER_TOR_PW
 if [ -z "${USER_TOR_PW}" ]; then
     TOR_PASSWORD=$(openssl rand -hex 16)
-    log_ok "Auto-generated secure Tor Control Password: ${TOR_PASSWORD}"
+    log_ok "Generated a secure Tor Control Password (stored in .env, not printed)."
 else
     TOR_PASSWORD="${USER_TOR_PW}"
     log_ok "Using user-specified Tor Control Password."
@@ -81,6 +81,35 @@ MAX_PAGES=${PAGES_INPUT:-50}
 
 read -r -p "Enter TELEGRAM_BOT_TOKEN (press ENTER to skip): " TG_TOKEN
 read -r -p "Enter TELEGRAM_CHAT_ID (press ENTER to skip): " TG_CHAT_ID
+
+read -r -p "Install the read-only web dashboard? [Y/n]: " DASH_INPUT
+DASH_INPUT=${DASH_INPUT:-y}
+INSTALL_DASHBOARD="n"
+if [[ "${DASH_INPUT,,}" =~ ^(y|yes)$ ]]; then
+    INSTALL_DASHBOARD="y"
+fi
+
+DASH_TOKEN=""
+if [ "${INSTALL_DASHBOARD}" = "y" ]; then
+    read -r -p "Require a dashboard login token? [y/N]: " DASH_AUTH_INPUT
+    if [[ "${DASH_AUTH_INPUT,,}" =~ ^(y|yes)$ ]]; then
+        DASH_TOKEN=$(openssl rand -hex 24)
+        log_ok "Generated dashboard access token (stored in /etc/darkweb-dashboard.env)."
+    fi
+fi
+
+read -r -p "Allow clearnet targets through Tor? [y/N]: " CLEARNET_INPUT
+ALLOW_CLEARNET="false"
+CLEARNET_DOMAINS=""
+CLEARNET_ANY="false"
+if [[ "${CLEARNET_INPUT,,}" =~ ^(y|yes)$ ]]; then
+    ALLOW_CLEARNET="true"
+    read -r -p "Allowed clearnet domains (comma-separated, blank = any public host): " CLEARNET_DOMAINS
+    if [ -z "${CLEARNET_DOMAINS}" ]; then
+        CLEARNET_ANY="true"
+        log_warn "Any public clearnet host may be crawled. Use an allowlist for production."
+    fi
+fi
 
 # ==============================================================================
 # STEP 2: System Packages & Astral uv Engine
@@ -220,31 +249,45 @@ TOR_CONTROL_PORT=9051
 TOR_CONTROL_PASSWORD=${TOR_PASSWORD}
 TOR_NEWNYM_MIN_INTERVAL=10
 
-ALLOW_CLEARNET_TARGETS=false
+ALLOW_CLEARNET_TARGETS=${ALLOW_CLEARNET}
+CLEARNET_ALLOWED_DOMAINS="${CLEARNET_DOMAINS}"
+CLEARNET_ALLOW_ANY=${CLEARNET_ANY}
+CLEARNET_ALLOWED_PORTS=80,443
+CLEARNET_REQUIRE_HTTPS=false
+CLEARNET_MAX_REDIRECTS=3
 REDACT_URLS_IN_LOGS=false
 INCLUDE_SOURCE_URL_IN_ALERTS=true
 
 TELEGRAM_BOT_TOKEN=${TG_TOKEN}
 TELEGRAM_CHAT_ID=${TG_CHAT_ID}
 TELEGRAM_PROXY=
+TELEGRAM_QUEUE_SIZE=500
 
 GGUF_MODEL_PATH=${MODEL_FILE}
 LLM_CONTEXT=4096
 LLM_THREADS=$(nproc)
 LLM_GPU_LAYERS=${LLM_LAYERS}
 LLM_TEMPERATURE=0.1
+LLM_MAX_TOKENS=512
+LLM_FAIL_OPEN=true
+LLM_CACHE_ENABLED=true
+LLM_CACHE_DAYS=30
 LLM_PREFILTER_KEYWORDS=true
 KEYWORDS="data breach,exploit,crypto,leak,0day,ransomware,victim"
 
 DB_PATH=${APP_DIR}/data/alerts.db
 CSV_PATH=${APP_DIR}/data/forum_sites.csv
 DATA_RETENTION_DAYS=500
+SEED_REMOVE_MISSING=false
 
 MAX_PARALLEL_SITES=3
 MAX_PARALLEL_FETCHES=3
 MAX_PARALLEL_HEALTH=6
 MAX_LLM_WORKERS=1
 MAX_FETCHES_PER_DOMAIN=1
+DOMAIN_MIN_INTERVAL=2.0
+FETCH_RETRIES=2
+FETCH_BACKOFF_BASE=2.0
 
 PAGE_DISCOVERY_ENABLED=true
 MAX_PAGES_PER_SITE=${MAX_PAGES}
@@ -257,6 +300,10 @@ REQUIRE_RELEVANCE=true
 THREAD_FIRST_PAGE_ONLY=true
 FIRST_POST_ONLY=true
 SUMMARIZE_ALERTS=true
+
+SCRAPE_CYCLE_BUDGET_SECONDS=3600
+SITE_BUDGET_SECONDS=600
+TOR_RENEW_INTERVAL_MINUTES=30
 
 HEALTH_TIMEOUT=15
 REQUEST_TIMEOUT=60
@@ -321,6 +368,66 @@ EOF
     log_ok "Systemd service 'darkweb-scraper' running."
 fi
 
+# ==============================================================================
+# STEP 10: Read-only Web Dashboard
+# ==============================================================================
+DASH_ENV_FILE="/etc/darkweb-dashboard.env"
+if [ "${INSTALL_DASHBOARD}" = "y" ]; then
+    log_step "Configuring Read-Only Web Dashboard"
+    cat <<EOF > "${DASH_ENV_FILE}"
+DB_PATH=${APP_DIR}/data/alerts.db
+DASHBOARD_HOST=127.0.0.1
+DASHBOARD_PORT=8787
+DASHBOARD_AUTH_TOKEN=${DASH_TOKEN}
+DASHBOARD_SECURE_COOKIE=false
+DASHBOARD_ALLOWED_HOSTS=127.0.0.1,localhost,::1
+DASHBOARD_PAGE_SIZE=25
+DASHBOARD_POLL_SECONDS=15
+DASHBOARD_ACCESS_LOG=false
+DASHBOARD_ENABLE_DOCS=false
+EOF
+    chown "${SERVICE_USER}:${SERVICE_USER}" "${DASH_ENV_FILE}"
+    chmod 600 "${DASH_ENV_FILE}"
+
+    if [ "${INSTALL_SYSTEMD}" = "y" ]; then
+        DASH_UNIT="/etc/systemd/system/darkweb-dashboard.service"
+        cat <<EOF > "${DASH_UNIT}"
+[Unit]
+Description=Dark Web Threat Intelligence — Read-only Dashboard
+After=network.target darkweb-scraper.service
+Wants=darkweb-scraper.service
+
+[Service]
+Type=simple
+User=${SERVICE_USER}
+WorkingDirectory=${APP_DIR}
+EnvironmentFile=${DASH_ENV_FILE}
+ExecStart=${PYTHON_BIN} -m scraper.dashboard
+Restart=always
+RestartSec=10
+UMask=0077
+
+ProtectSystem=full
+ProtectHome=false
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        systemctl enable darkweb-dashboard.service
+        systemctl restart darkweb-dashboard.service
+        log_ok "Systemd service 'darkweb-dashboard' running on http://127.0.0.1:8787"
+    else
+        log_ok "Dashboard configured. Start it with:"
+        log_info "DASHBOARD_ENV_FILE=${DASH_ENV_FILE} ${PYTHON_BIN} -m scraper.dashboard"
+    fi
+fi
+
 echo "" >&2
 echo -e "${BOLD}${GREEN}================================================================${NC}" >&2
 echo -e "${BOLD}${GREEN}           DEPLOYMENT COMPLETE                                  ${NC}" >&2
@@ -329,4 +436,13 @@ echo -e "Module Entrypoint:     ${CYAN}python3 -m scraper${NC} (or ${CYAN}./main
 echo -e "Database Path:         ${YELLOW}${APP_DIR}/data/alerts.db${NC}" >&2
 echo -e "Target CSV:            ${YELLOW}${APP_DIR}/data/forum_sites.csv${NC}" >&2
 echo -e "Local Model:           ${YELLOW}${MODEL_FILE}${NC}" >&2
+if [ "${INSTALL_DASHBOARD}" = "y" ]; then
+    echo -e "Dashboard:             ${CYAN}http://127.0.0.1:8787${NC}" >&2
+    echo -e "Dashboard config:      ${YELLOW}${DASH_ENV_FILE}${NC}" >&2
+    if [ -n "${DASH_TOKEN}" ]; then
+        echo -e "Dashboard auth:        ${GREEN}enabled${NC} (token in ${DASH_ENV_FILE})" >&2
+    else
+        echo -e "Dashboard auth:        ${YELLOW}disabled${NC} (loopback access only)" >&2
+    fi
+fi
 echo -e "${BOLD}${GREEN}================================================================${NC}" >&2

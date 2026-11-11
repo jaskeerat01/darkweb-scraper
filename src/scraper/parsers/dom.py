@@ -50,10 +50,10 @@ def extract_first_post_element(soup: BeautifulSoup):
         return None
 
 
-def extract_post_description(soup: BeautifulSoup) -> str:
+def extract_post_description(soup: BeautifulSoup, config=None) -> str:
     """Extracts the initial thread publication body while ignoring navigation noise."""
     target = soup
-    if CONFIG.first_post_only:
+    if (config or CONFIG).first_post_only:
         first_post = extract_first_post_element(soup)
         if first_post is not None:
             target = first_post
@@ -75,8 +75,14 @@ def extract_post_description(soup: BeautifulSoup) -> str:
     return "\n".join(lines).strip()
 
 
-def extract_page_links(soup: BeautifulSoup, base_url: str, same_host_only: bool = True) -> List[Tuple[str, str]]:
+def extract_page_links(
+    soup: BeautifulSoup,
+    base_url: str,
+    same_host_only: bool = True,
+    config=None,
+) -> List[Tuple[str, str]]:
     """Gathers qualified hyperlinks and meta refresh directives from the document."""
+    cfg = config or CONFIG
     links: List[Tuple[str, str]] = []
     try:
         base_host = normalize_hostname(urlparse(base_url).hostname)
@@ -94,7 +100,7 @@ def extract_page_links(soup: BeautifulSoup, base_url: str, same_host_only: bool 
                 continue
             if same_host_only and normalize_hostname(p.hostname) != base_host:
                 continue
-            if not is_allowed_page_url(absolute):
+            if not is_allowed_page_url(absolute, cfg):
                 continue
 
             text = tag.get_text(" ", strip=True)[:300] if tag.name == "a" else ""
@@ -118,7 +124,7 @@ def extract_page_links(soup: BeautifulSoup, base_url: str, same_host_only: bool 
                 continue
             if same_host_only and normalize_hostname(p.hostname) != base_host:
                 continue
-            if is_allowed_page_url(absolute):
+            if is_allowed_page_url(absolute, cfg):
                 links.append((absolute, ""))
     except Exception:
         pass

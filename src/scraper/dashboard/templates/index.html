@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">operations / alerts</p>
+    <h1>Alerts</h1>
+    <p class="lede">Local, read-only view of collected threat intelligence. Nothing on this page is sent anywhere.</p>
+  </div>
+  <div class="head-status">
+    {% if db_available %}
+      <span class="live"><span class="status-dot status-ok" aria-hidden="true"></span> live</span>
+      <span class="micro muted">updates every {{ poll_seconds }}s</span>
+    {% else %}
+      <span class="live"><span class="status-dot status-warn" aria-hidden="true"></span> database not ready</span>
+    {% endif %}
+  </div>
+</section>
+
+{% if not db_available %}
+  <section class="panel onboarding" aria-labelledby="getting-started">
+    <div class="panel-head">
+      <span class="panel-label">getting started</span>
+      <span class="micro muted">read-only</span>
+    </div>
+    <div class="panel-body">
+      <h2 id="getting-started">No alerts database yet.</h2>
+      <p class="muted">
+        The dashboard only reads <code>data/alerts.db</code>. It will not create or migrate the database.
+        Run the installer or start the scraper once.
+      </p>
+      <p class="notice">Database status: {{ db_error }}</p>
+      <ol class="steps">
+        <li class="step">
+          <span class="step-number">01</span>
+          <div>
+            <h3>Verify Tor</h3>
+            <p class="muted">Both SOCKS and control ports must be reachable on loopback.</p>
+            <div class="command"><code id="cmd-tor">systemctl status tor</code><button type="button" class="btn btn-small" data-copy-target="cmd-tor">copy</button></div>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step-number">02</span>
+          <div>
+            <h3>Add targets</h3>
+            <p class="muted">Add onion services, or allowlisted clearnet targets, to the seed CSV.</p>
+            <div class="command"><code id="cmd-csv">data/forum_sites.csv</code><button type="button" class="btn btn-small" data-copy-target="cmd-csv">copy</button></div>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step-number">03</span>
+          <div>
+            <h3>Start the scraper</h3>
+            <p class="muted">Alerts appear here after the first scrape cycle stores them.</p>
+            <div class="command"><code id="cmd-run">python -m scraper</code><button type="button" class="btn btn-small" data-copy-target="cmd-run">copy</button></div>
+          </div>
+        </li>
+      </ol>
+      <div class="actions">
+        <a class="btn btn-primary" href="/">refresh</a>
+        <a class="btn" href="/about">read the setup notes</a>
+      </div>
+    </div>
+  </section>
+{% else %}
+  <section class="stats-panel" aria-label="Alert statistics">
+    <div class="stat">
+      <span class="stat-value">{{ "{:,}".format(stats.total) }}</span>
+      <span class="stat-label">total alerts</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{{ "{:,}".format(stats.today) }}</span>
+      <span class="stat-label">today · utc</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{{ "{:,}".format(stats.high_7d) }}</span>
+      <span class="stat-label">high severity · 7d</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{{ stats.sites_up }}<span class="stat-sub"> / {{ stats.sites_up + stats.sites_down + stats.sites_unknown }}</span></span>
+      <span class="stat-label">sources up</span>
+    </div>
+  </section>
+
+  {% if total == 0 and not filters_active %}
+    <section class="panel onboarding" aria-labelledby="no-alerts">
+      <div class="panel-head">
+        <span class="panel-label">getting started</span>
+        <span class="micro muted">0 alerts</span>
+      </div>
+      <div class="panel-body">
+        <h2 id="no-alerts">No alerts yet.</h2>
+        <p class="muted">The database is ready. The scraper has not stored a relevant alert yet.</p>
+        <ol class="steps">
+          <li class="step">
+            <span class="step-number">01</span>
+            <div>
+              <h3>Verify Tor</h3>
+              <p class="muted">The scraper routes every target request through Tor.</p>
+              <div class="command"><code id="cmd-tor">systemctl status tor</code><button type="button" class="btn btn-small" data-copy-target="cmd-tor">copy</button></div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-number">02</span>
+            <div>
+              <h3>Add targets</h3>
+              <p class="muted">Add onion services, or allowlisted clearnet targets, to the seed CSV.</p>
+              <div class="command"><code id="cmd-csv">data/forum_sites.csv</code><button type="button" class="btn btn-small" data-copy-target="cmd-csv">copy</button></div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-number">03</span>
+            <div>
+              <h3>Run a scrape cycle</h3>
+              <p class="muted">Keep the service running, or start it manually for one session.</p>
+              <div class="command"><code id="cmd-run">python -m scraper</code><button type="button" class="btn btn-small" data-copy-target="cmd-run">copy</button></div>
+            </div>
+          </li>
+        </ol>
+        <div class="actions">
+          <a class="btn btn-primary" href="/">refresh</a>
+          <a class="btn" href="/about">read the setup notes</a>
+        </div>
+      </div>
+    </section>
+  {% else %}
+    <div class="dashboard-grid">
+      <div class="main-column">
+        <section class="panel">
+          <div class="panel-head">
+            <span class="panel-label">filters</span>
+            <a class="micro muted link" href="/">reset all</a>
+          </div>
+          <form class="filter-form" method="get" action="/" role="search">
+            <label class="field field-wide">
+              <span>search</span>
+              <input type="search" name="q" value="{{ filters.q }}" placeholder="summary, content, source, ioc" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>severity</span>
+              <select name="severity">
+                <option value="">all</option>
+                {% for value in ['high', 'medium', 'low'] %}
+                  <option value="{{ value }}" {% if filters.severity == value %}selected{% endif %}>{{ value }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field">
+              <span>category</span>
+              <select name="category">
+                <option value="">all</option>
+                {% for value in categories %}
+                  <option value="{{ value }}" {% if filters.category == value %}selected{% endif %}>{{ value }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field">
+              <span>source</span>
+              <select name="source">
+                <option value="">all</option>
+                {% for value in sources %}
+                  <option value="{{ value }}" {% if filters.source == value %}selected{% endif %}>{{ value }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field">
+              <span>network</span>
+              <select name="network">
+                <option value="">all</option>
+                <option value="onion" {% if filters.network == 'onion' %}selected{% endif %}>onion</option>
+                <option value="clearnet" {% if filters.network == 'clearnet' %}selected{% endif %}>clearnet</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>from</span>
+              <input type="date" name="from" value="{{ filters.date_from.isoformat() if filters.date_from else '' }}">
+            </label>
+            <label class="field">
+              <span>to</span>
+              <input type="date" name="to" value="{{ filters.date_to.isoformat() if filters.date_to else '' }}">
+            </label>
+            <div class="filter-actions">
+              <button type="submit" class="btn btn-primary">search</button>
+              <a class="btn" href="/">reset</a>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel alerts-panel">
+          <div class="panel-head">
+            <span class="panel-label">alerts · {{ "{:,}".format(total) }}</span>
+            <span class="micro muted">{{ alerts|length }} shown</span>
+          </div>
+
+          {% if not alerts %}
+            <div class="empty">
+              <h2>No alerts match these filters.</h2>
+              <p class="muted">Try removing a filter or searching for a broader term.</p>
+              <a class="btn" href="/">reset filters</a>
+            </div>
+          {% else %}
+            <div class="alert-table" role="list">
+              <div class="alert-table-head" aria-hidden="true">
+                <span>time</span><span>severity</span><span>category</span><span>source</span><span>summary</span>
+              </div>
+              {% for alert in alerts %}
+                <a class="alert-row" href="/alerts/{{ alert.id }}" role="listitem">
+                  <div class="alert-time">
+                    <time datetime="{{ alert.timestamp|utc_date }}" title="{{ alert.timestamp|utc }}" data-ts="{{ alert.timestamp }}">{{ alert.timestamp|relative }}</time>
+                    <span class="micro muted">{{ alert.timestamp|utc_date }}</span>
+                  </div>
+                  <div><span class="sev sev-{{ alert.severity }}"><span class="sev-mark" aria-hidden="true"></span>{{ alert.severity }}</span></div>
+                  <div class="alert-category"><span class="chip">{{ alert.category }}</span></div>
+                  <div class="alert-source">
+                    <span class="source-name">{{ alert.source_name }}</span>
+                    <span class="net-badge net-{{ alert.network }}">{{ alert.network }}</span>
+                  </div>
+                  <div class="alert-summary">
+                    <p>{{ alert.display_summary }}</p>
+                    {% if alert.iocs_list %}
+                      <div class="ioc-chips">
+                        {% for ioc in alert.iocs_list[:3] %}<span class="chip mono">{{ ioc }}</span>{% endfor %}
+                        {% if alert.iocs_list|length > 3 %}<span class="chip muted">+{{ alert.iocs_list|length - 3 }}</span>{% endif %}
+                      </div>
+                    {% endif %}
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+            <div class="panel-foot">
+              <span class="micro muted">page size {{ filters.limit }}</span>
+              {% if next_url %}
+                <a class="btn btn-small" href="{{ next_url }}">older →</a>
+              {% else %}
+                <span class="micro muted">end of results</span>
+              {% endif %}
+            </div>
+          {% endif %}
+        </section>
+      </div>
+
+      <aside class="side-column">
+        <section class="panel">
+          <div class="panel-head"><span class="panel-label">top categories · 30d</span></div>
+          <div class="panel-body compact">
+            {% if stats.top_categories %}
+              <ul class="bar-list">
+                {% set max_count = stats.top_categories[0].count or 1 %}
+                {% for item in stats.top_categories %}
+                  <li>
+                    <div class="bar-row"><span>{{ item.category }}</span><span class="mono">{{ "{:,}".format(item.count) }}</span></div>
+                    <progress value="{{ item.count }}" max="{{ max_count }}"></progress>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="muted">No alerts in the last 30 days.</p>
+            {% endif %}
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><span class="panel-label">network split</span></div>
+          <div class="panel-body compact">
+            <dl class="kv">
+              <div><dt>onion</dt><dd class="mono">{{ "{:,}".format(stats.onion) }}</dd></div>
+              <div><dt>clearnet</dt><dd class="mono">{{ "{:,}".format(stats.clearnet) }}</dd></div>
+              <div><dt>last 24h</dt><dd class="mono">{{ "{:,}".format(stats.last_24h) }}</dd></div>
+            </dl>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><span class="panel-label">help</span></div>
+          <div class="panel-body compact prose">
+            <p><kbd>/</kbd> focuses search. <kbd>Esc</kbd> leaves the field.</p>
+            <p>Clearnet targets are fetched through Tor, never directly. Some sites block Tor exits.</p>
+            <p><a href="/sources">source health</a> shows last check and uptime.</p>
+          </div>
+        </section>
+      </aside>
+    </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

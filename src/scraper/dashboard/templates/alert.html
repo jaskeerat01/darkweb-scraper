@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Alert #{{ alert.id }}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="/">← alerts</a>
+</nav>
+
+<section class="page-head detail-head">
+  <div>
+    <p class="eyebrow">alert / {{ alert.id }}</p>
+    <h1>{{ alert.display_summary }}</h1>
+    <div class="badge-row">
+      <span class="sev sev-{{ alert.severity }}"><span class="sev-mark" aria-hidden="true"></span>{{ alert.severity }}</span>
+      <span class="chip">{{ alert.category }}</span>
+      <span class="chip">{{ alert.source_name }}</span>
+      <span class="net-badge net-{{ alert.network }}">{{ alert.network }}</span>
+      <span class="micro muted">{{ alert.timestamp|utc }}</span>
+    </div>
+  </div>
+</section>
+
+<div class="detail-grid">
+  <div class="detail-main">
+    <section class="panel">
+      <div class="panel-head"><span class="panel-label">summary</span></div>
+      <div class="panel-body prose">
+        {% if alert.summary %}
+          <div class="summary-text">{{ alert.summary }}</div>
+        {% else %}
+          <p class="muted">No model summary was stored for this alert. The extracted content is shown below.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-label">indicators · {{ alert.iocs_list|length }}</span>
+      </div>
+      <div class="panel-body">
+        {% if alert.iocs_list %}
+          <ul class="ioc-list">
+            {% for ioc in alert.iocs_list %}
+              <li>
+                <code>{{ ioc }}</code>
+                <button type="button" class="btn btn-small" data-copy-value="{{ ioc }}">copy</button>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">No indicators were extracted from this item.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <details class="content-details">
+        <summary class="panel-head">
+          <span class="panel-label">extracted content</span>
+          <span class="micro muted">expand</span>
+        </summary>
+        <div class="panel-body">
+          <pre class="content-pre">{{ alert.description_display }}</pre>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span class="panel-label">source</span></div>
+      <div class="panel-body">
+        <p class="muted">Rendered as text only. The dashboard does not attempt to open onion or clearnet targets.</p>
+        <div class="source-url">
+          <code>{{ alert.source_url }}</code>
+          <button type="button" class="btn btn-small" data-copy-value="{{ alert.source_url }}">copy</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <aside class="detail-side">
+    <section class="panel">
+      <div class="panel-head"><span class="panel-label">metadata</span></div>
+      <div class="panel-body compact">
+        <dl class="kv">
+          <div><dt>source</dt><dd>{{ alert.source_name }}</dd></div>
+          <div><dt>group</dt><dd>{{ alert.group_name or "unknown" }}</dd></div>
+          <div><dt>captured</dt><dd class="mono">{{ alert.timestamp|utc }}</dd></div>
+          <div><dt>network</dt><dd>{{ alert.network }}</dd></div>
+          <div><dt>hash</dt><dd class="mono break">{{ alert.content_hash[:16] if alert.content_hash else "—" }}</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    {% if alert.entities_list %}
+      <section class="panel">
+        <div class="panel-head"><span class="panel-label">entities</span></div>
+        <div class="panel-body compact">
+          <div class="ioc-chips">
+            {% for entity in alert.entities_list %}<span class="chip">{{ entity }}</span>{% endfor %}
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="panel">
+      <div class="panel-head"><span class="panel-label">actions</span></div>
+      <div class="panel-body compact actions-column">
+        <a class="btn" href="/">back to alerts</a>
+        <a class="btn" href="/sources">source health</a>
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}

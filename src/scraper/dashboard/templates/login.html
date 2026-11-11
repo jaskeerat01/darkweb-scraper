@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Local access{% endblock %}
+
+{% block content %}
+<section class="login-wrap">
+  <div class="panel login-panel">
+    <div class="panel-head">
+      <span class="panel-label">local access</span>
+      <span class="micro muted">read-only</span>
+    </div>
+    <div class="panel-body">
+      <h1>Sign in</h1>
+      <p class="muted">This dashboard is protected by an access token. The token is read from <code>DASHBOARD_AUTH_TOKEN</code> by the dashboard process only.</p>
+
+      {% if error %}
+        <p class="form-error" role="alert">{{ error }}</p>
+      {% endif %}
+
+      <form method="post" action="/login" class="login-form">
+        <input type="hidden" name="next" value="{{ next }}">
+        <label class="field">
+          <span>access token</span>
+          <input type="password" name="token" autocomplete="current-password" required autofocus>
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">sign in</button>
+      </form>
+
+      <p class="micro muted login-note">Local-only dashboard. No telemetry. No external requests.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

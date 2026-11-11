@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}About{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">operations / about</p>
+    <h1>About</h1>
+    <p class="lede">Scope, privacy, and operating notes for this local dashboard.</p>
+  </div>
+</section>
+
+<div class="about-grid">
+  <section class="panel">
+    <div class="panel-head"><span class="panel-label">scope</span></div>
+    <div class="panel-body prose">
+      <p>This dashboard displays alerts collected by the Dark Web Threat Intelligence Engine. It is intended for authorised defensive security, threat intelligence, and educational research only.</p>
+      <p>Onion targets are crawled through Tor. Clearnet targets, when explicitly enabled and allowlisted, are also fetched through the Tor SOCKS5 proxy, never directly from this host.</p>
+      <p>Do not use this tool to access, store, or distribute illegal material. You are responsible for complying with applicable law and target terms of service.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><span class="panel-label">data flow</span></div>
+    <div class="panel-body prose">
+      <p>The scraper writes to a local SQLite database in WAL mode. This dashboard opens that database read-only and renders it server-side.</p>
+      <p>No telemetry, analytics, external fonts, CDNs, or third-party scripts are used. The dashboard makes no outbound network requests.</p>
+      <p>Session authentication is optional. When enabled, the access token is exchanged for a signed, HttpOnly, SameSite=Strict cookie.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><span class="panel-label">operating notes</span></div>
+    <div class="panel-body prose">
+      <ul class="notes">
+        <li>Clearnet targets see a Tor exit IP and may be blocked by the destination.</li>
+        <li>Plain HTTP is readable and modifiable by an exit node; prefer HTTPS.</li>
+        <li>Source URLs are shown as text, never as clickable links, so the browser does not resolve onion names.</li>
+        <li>Severity and category are deterministic heuristics on top of the local model summary, not model verdicts.</li>
+        <li>The dashboard never exposes Tor control credentials, Telegram tokens, or model paths.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><span class="panel-label">keyboard &amp; shortcuts</span></div>
+    <div class="panel-body prose">
+      <dl class="kv">
+        <div><dt><kbd>/</kbd></dt><dd>focus search</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>leave the search field</dd></div>
+      </dl>
+      <p class="muted">Relative timestamps update automatically. Exact UTC timestamps are available on hover.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><span class="panel-label">disclaimer</span></div>
+    <div class="panel-body prose">
+      <p>This software is provided “as is”, without warranty of any kind. The developers and contributors assume no liability for misuse, damage, legal repercussions, data loss, or operational disruption resulting from use of this software.</p>
+      <p><a href="/">return to alerts</a></p>
+    </div>
+  </section>
+</div>
+{% endblock %}

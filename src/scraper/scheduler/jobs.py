@@ -1,11 +1,13 @@
 import asyncio
 import logging
-import random
+import time
+
 import aiohttp
 
-from scraper.config import CONFIG
+from scraper.config import CONFIG, Config
 from scraper.crawler.crawler import CrawlerEngine
 from scraper.crawler.processor import PageProcessor
+from scraper.network.policy import is_allowed_target_url
 from scraper.network.session import build_tor_connector, check_site_live
 from scraper.network.throttler import DomainThrottler
 from scraper.network.tor import tor_manager
@@ -15,111 +17,194 @@ from scraper.storage.seed import seed_sites_from_csv
 
 logger = logging.getLogger("scraper")
 
-_throttler = DomainThrottler(CONFIG.max_fetches_per_domain)
-_crawler = CrawlerEngine(_throttler)
-_processor = PageProcessor(_crawler)
+
+def _build_processor(config: Config) -> PageProcessor:
+    throttler = DomainThrottler(
+        config.max_fetches_per_domain,
+        min_interval=config.domain_min_interval,
+    )
+    return PageProcessor(CrawlerEngine(throttler, config=config), config=config)
 
 
-async def health_check_job():
-    """Validates the availability of tracked onion services through the Tor proxy."""
+async def health_check_job(config: Config | None = None) -> None:
+    """Validate the availability of tracked targets through the Tor proxy."""
+    cfg = config or CONFIG
     logger.info("=" * 60)
     logger.info("Starting health check cycle...")
-    await tor_manager.renew_circuit()
+    await tor_manager.renew_circuit(cfg)
 
-    sites = await asyncio.to_thread(SiteRepository.get_all_sites)
-    total = len(sites)
-    if total == 0:
+    sites = await asyncio.to_thread(SiteRepository.get_all_sites, config=cfg)
+    if not sites:
         logger.warning("No sites in database.")
         return
 
-    connector = build_tor_connector()
+    allowed = []
+    skipped = 0
+    for site in sites:
+        if is_allowed_target_url(site["url"], cfg):
+            allowed.append(site)
+        else:
+            skipped += 1
+
+    if skipped:
+        logger.warning("Skipped %d targets rejected by the current scope policy.", skipped)
+    if not allowed:
+        logger.warning("No in-scope sites to check.")
+        return
+
+    total = len(allowed)
+    connector = build_tor_connector(config=cfg)
     if connector is None:
         return
 
-    timeout = aiohttp.ClientTimeout(total=CONFIG.health_timeout)
-    async with aiohttp.ClientSession(connector=connector, trust_env=False, timeout=timeout) as session:
-        sem = asyncio.Semaphore(max(1, CONFIG.max_parallel_health))
-        up_count = 0
-        down_count = 0
-        checked = 0
+    timeout = aiohttp.ClientTimeout(total=cfg.health_timeout)
+    async with aiohttp.ClientSession(
+        connector=connector, trust_env=False, timeout=timeout
+    ) as session:
+        sem = asyncio.Semaphore(max(1, cfg.max_parallel_health))
+        counts = {"up": 0, "down": 0, "checked": 0}
         lock = asyncio.Lock()
 
-        async def check_one(url: str):
-            nonlocal up_count, down_count, checked
+        async def check_one(site: dict) -> None:
+            url = site["url"]
             async with sem:
-                alive, status_code, error = await check_site_live(url, session)
-                await asyncio.to_thread(SiteRepository.update_health, url, alive, status_code, error)
+                alive, status_code, error = await check_site_live(
+                    url, session, config=cfg
+                )
+                await asyncio.to_thread(
+                    SiteRepository.update_health,
+                    url,
+                    alive,
+                    status_code,
+                    error,
+                    config=cfg,
+                )
                 async with lock:
+                    counts["up" if alive else "down"] += 1
+                    counts["checked"] += 1
+                    checked = counts["checked"]
                     if alive:
-                        up_count += 1
-                        logger.info(f"[{checked + 1}/{total}] UP   {redact_url(url)} (status={status_code})")
-                    else:
-                        down_count += 1
-                    checked += 1
+                        logger.info(
+                            "[%d/%d] UP   %s (status=%s)",
+                            checked,
+                            total,
+                            redact_url(url, cfg),
+                            status_code,
+                        )
                     if checked % 50 == 0 or checked == total:
-                        logger.info(f"Health progress: {checked}/{total} | Up: {up_count} | Down: {down_count}")
-                await asyncio.sleep(random.uniform(0.1, 0.3))
+                        logger.info(
+                            "Health progress: %d/%d | Up: %d | Down: %d",
+                            checked,
+                            total,
+                            counts["up"],
+                            counts["down"],
+                        )
+                await asyncio.sleep(0.15)
 
-        await asyncio.gather(*(check_one(r["url"]) for r in sites), return_exceptions=True)
+        await asyncio.gather(*(check_one(site) for site in allowed), return_exceptions=True)
 
-    logger.info(f"Health check complete. Up: {up_count}, Down: {down_count}, Total: {total}")
+    logger.info(
+        "Health check complete. Up: %d, Down: %d, Total: %d",
+        counts["up"],
+        counts["down"],
+        total,
+    )
     logger.info("=" * 60)
 
 
-async def scrape_job():
-    """Runs a recursive discovery and scraping cycle across online sites."""
+async def scrape_job(config: Config | None = None) -> None:
+    """Run a recursive discovery and scraping cycle across in-scope sites."""
+    cfg = config or CONFIG
     logger.info("=" * 60)
     logger.info("Starting scrape cycle...")
-    await tor_manager.renew_circuit()
+    await tor_manager.renew_circuit(cfg)
 
-    live_sites = await asyncio.to_thread(SiteRepository.get_live_sites)
+    live_sites = await asyncio.to_thread(SiteRepository.get_live_sites, config=cfg)
+    live_sites = [site for site in live_sites if is_allowed_target_url(site["url"], cfg)]
     if not live_sites:
-        logger.warning("No live sites to scrape. Waiting for next health check.")
+        logger.warning("No live in-scope sites to scrape. Waiting for next health check.")
         return
 
     total = len(live_sites)
     logger.info(
-        f"Scraping {total} live sites in parallel. "
-        f"sites={CONFIG.max_parallel_sites}, fetches={CONFIG.max_parallel_fetches}, "
-        f"llm_workers={CONFIG.max_llm_workers}, domain_throttle={CONFIG.max_fetches_per_domain}"
+        "Scraping %d live sites in parallel. sites=%d, fetches=%d, llm_workers=%d, "
+        "domain_throttle=%d, budget=%ds",
+        total,
+        cfg.max_parallel_sites,
+        cfg.max_parallel_fetches,
+        cfg.max_llm_workers,
+        cfg.max_fetches_per_domain,
+        cfg.scrape_cycle_budget_seconds,
     )
 
-    connector = build_tor_connector(limit=CONFIG.max_parallel_fetches * 2)
+    connector = build_tor_connector(limit=cfg.max_parallel_fetches * 2, config=cfg)
     if connector is None:
         return
 
-    timeout = aiohttp.ClientTimeout(total=CONFIG.request_timeout)
-    async with aiohttp.ClientSession(connector=connector, trust_env=False, timeout=timeout) as tor_session:
-        fetch_sem = asyncio.Semaphore(max(1, CONFIG.max_parallel_fetches))
-        llm_sem = asyncio.Semaphore(max(1, CONFIG.max_llm_workers))
-        site_sem = asyncio.Semaphore(max(1, CONFIG.max_parallel_sites))
+    processor = _build_processor(cfg)
+    timeout = aiohttp.ClientTimeout(total=cfg.request_timeout)
+    async with aiohttp.ClientSession(
+        connector=connector, trust_env=False, timeout=timeout
+    ) as tor_session:
+        fetch_sem = asyncio.Semaphore(max(1, cfg.max_parallel_fetches))
+        llm_sem = asyncio.Semaphore(max(1, cfg.max_llm_workers))
+        site_sem = asyncio.Semaphore(max(1, cfg.max_parallel_sites))
+        deadline = time.monotonic() + cfg.scrape_cycle_budget_seconds
 
         completed = 0
         alert_count = 0
+        skipped = 0
         lock = asyncio.Lock()
 
-        async def bounded_process(site: dict):
-            nonlocal completed, alert_count
+        async def bounded_process(site: dict) -> None:
+            nonlocal completed, alert_count, skipped
+            if time.monotonic() >= deadline:
+                async with lock:
+                    skipped += 1
+                return
             async with site_sem:
-                new_alerts = await _processor.process_site(site, fetch_sem, llm_sem, tor_session)
+                if time.monotonic() >= deadline:
+                    async with lock:
+                        skipped += 1
+                    return
+                new_alerts = await processor.process_site(
+                    site, fetch_sem, llm_sem, tor_session
+                )
             async with lock:
                 completed += 1
                 alert_count += max(0, int(new_alerts or 0))
                 if completed % 10 == 0 or completed == total:
-                    logger.info(f"Scrape progress: {completed}/{total} sites")
+                    logger.info("Scrape progress: %d/%d sites", completed, total)
 
-        await asyncio.gather(*(bounded_process(s) for s in live_sites), return_exceptions=True)
+        await asyncio.gather(
+            *(bounded_process(site) for site in live_sites), return_exceptions=True
+        )
 
-    logger.info(f"Scrape cycle completed. New alerts: {alert_count}")
+    logger.info(
+        "Scrape cycle completed. New alerts: %d | processed: %d | skipped: %d",
+        alert_count,
+        completed,
+        skipped,
+    )
     logger.info("=" * 60)
 
 
-async def cleanup_job():
-    """Prunes expired alerts to maintain database performance and bounded storage."""
-    deleted = await asyncio.to_thread(AlertRepository.cleanup_old, CONFIG.data_retention_days)
+async def cleanup_job(config: Config | None = None) -> None:
+    """Prune expired alerts and LLM cache entries."""
+    cfg = config or CONFIG
+    deleted = await asyncio.to_thread(
+        AlertRepository.cleanup_old,
+        cfg.data_retention_days,
+        cfg.llm_cache_days,
+        config=cfg,
+    )
     if deleted:
-        logger.info(f"Cleaned up {deleted} alerts older than {CONFIG.data_retention_days} days.")
+        logger.info(
+            "Cleaned up %d alerts older than %d days.",
+            deleted,
+            cfg.data_retention_days,
+        )
 
 
-async def sync_csv_job():
-    await asyncio.to_thread(seed_sites_from_csv)
+async def sync_csv_job(config: Config | None = None) -> None:
+    await asyncio.to_thread(seed_sites_from_csv, config=config or CONFIG)

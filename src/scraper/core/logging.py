@@ -20,4 +20,5 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
     )
     logging.getLogger("stem").setLevel(logging.WARNING)
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
+    logging.getLogger("apscheduler").setLevel(logging.WARNING)
     return logger

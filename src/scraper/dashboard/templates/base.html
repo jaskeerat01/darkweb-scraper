@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}Alerts{% endblock %} · Dark Web Intel</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body data-latest-ts="{{ latest_ts|default(0) }}" data-poll="{{ 'on' if poll_enabled else 'off' }}" data-poll-seconds="{{ poll_seconds|default(15) }}">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="Dark Web Intel home">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+          <path d="M12 2.5 21 7v10l-9 4.5L3 17V7l9-4.5Z" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.4"/>
+        </svg>
+        <span class="brand-name">darkweb intel</span>
+      </a>
+
+      <nav class="primary-nav" aria-label="Primary">
+        <a href="/" {% if active == 'alerts' %}aria-current="page"{% endif %}>alerts</a>
+        <a href="/sources" {% if active == 'sources' %}aria-current="page"{% endif %}>sources</a>
+        <a href="/about" {% if active == 'about' %}aria-current="page"{% endif %}>about</a>
+      </nav>
+
+      <div class="header-meta">
+        {% if auth_enabled %}
+          <form method="post" action="/logout" class="logout-form">
+            <button type="submit" class="btn btn-ghost btn-small">sign out</button>
+          </form>
+        {% else %}
+          <span class="local-badge"><span class="status-dot status-ok" aria-hidden="true"></span> local only</span>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="page">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>Read-only local view. No telemetry, no external requests.</span>
+      <a href="/about">scope &amp; disclaimer</a>
+    </div>
+  </footer>
+
+  <div id="new-alerts" class="new-alerts" hidden>
+    <span id="new-alerts-text">New alerts available</span>
+    <button type="button" class="btn btn-primary btn-small" id="new-alerts-refresh">refresh</button>
+  </div>
+
+  <script src="/static/js/app.js" defer></script>
+</body>
+</html>

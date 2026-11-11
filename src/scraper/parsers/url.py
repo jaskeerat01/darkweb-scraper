@@ -1,9 +1,10 @@
 import posixpath
 import re
 from typing import Optional
-from urllib.parse import urlparse, urldefrag, urlunparse, parse_qsl, urlencode
+from urllib.parse import parse_qsl, urldefrag, urlencode, urlparse, urlunparse
 
 from scraper.config import CONFIG
+from scraper.network.policy import is_allowed_target_url
 
 PAGE_IGNORE_EXTENSIONS = {
     ".zip", ".rar", ".7z", ".gz", ".tar", ".bz2", ".xz",
@@ -23,24 +24,27 @@ FORUM_NOISE_QUERY_PARAMS = {
     "s", "sid", "session", "session_id", "hash",
 }
 
-PAGE_BLOCKED_PATH_PREFIXES = (
-    "/user", "/users", "/u/", "/member", "/members", "/memberlist",
-    "/profile", "/profiles", "/account", "/conversation", "/conversations",
-    "/messages", "/inbox", "/search", "/online", "/whos-online",
-    "/latest-members", "/staff", "/moderators", "/login", "/logout",
-    "/register", "/signup", "/password", "/attachment", "/attachments",
-    "/tags", "/watched", "/find-new", "/misc", "/reputation",
-    "/report", "/reports", "/help", "/faq", "/Forum-Introductions",
-    "/Thread-Admin-DarkForums-Archive-Telegram-Channel",
-    "/newreply.php", "/newthread.php", "/editpost.php", "/deletepost.php",
-    "/private.php", "/sendmessage.php", "/printthread.php",
-    "/syndication.php", "/calendar.php", "/showteam.php", "/stats.php",
-    "/Forum-Support-Suggestions", "/Forum-The-Lounge", "/Forum-Freebies-Courses",
-    "/Forum-Tutorials", "/Forum-Games", "/Forum-Doxes", "/Forum-HackTheBox-TryHackMe",
-    "/Forum-Cracked-Accounts", "/Forum-Cracked-Tools", "/Forum-Services",
-    "/Forum-Currency-Exchange", "/Forum-Scam-Reports", "/Forum-Buyers-Place",
-    "/Forum-Source-Codes", "/bans", "/extras", "/newpoints",
-    "/upgrades", "/awards", "/credits",
+PAGE_BLOCKED_PATH_PREFIXES = tuple(
+    prefix.lower()
+    for prefix in (
+        "/user", "/users", "/u/", "/member", "/members", "/memberlist",
+        "/profile", "/profiles", "/account", "/conversation", "/conversations",
+        "/messages", "/inbox", "/search", "/online", "/whos-online",
+        "/latest-members", "/staff", "/moderators", "/login", "/logout",
+        "/register", "/signup", "/password", "/attachment", "/attachments",
+        "/tags", "/watched", "/find-new", "/misc", "/reputation",
+        "/report", "/reports", "/help", "/faq", "/Forum-Introductions",
+        "/Thread-Admin-DarkForums-Archive-Telegram-Channel",
+        "/newreply.php", "/newthread.php", "/editpost.php", "/deletepost.php",
+        "/private.php", "/sendmessage.php", "/printthread.php",
+        "/syndication.php", "/calendar.php", "/showteam.php", "/stats.php",
+        "/Forum-Support-Suggestions", "/Forum-The-Lounge", "/Forum-Freebies-Courses",
+        "/Forum-Tutorials", "/Forum-Games", "/Forum-Doxes", "/Forum-HackTheBox-TryHackMe",
+        "/Forum-Cracked-Accounts", "/Forum-Cracked-Tools", "/Forum-Services",
+        "/Forum-Currency-Exchange", "/Forum-Scam-Reports", "/Forum-Buyers-Place",
+        "/Forum-Source-Codes", "/bans", "/extras", "/newpoints",
+        "/upgrades", "/awards", "/credits",
+    )
 )
 
 PAGE_BLOCKED_QUERY_SUBSTRINGS = (
@@ -57,7 +61,7 @@ PAGE_CONTINUATION_RE = re.compile(
 
 def is_onion_url(url: str) -> bool:
     try:
-        return (urlparse(url).hostname or "").lower().endswith(".onion")
+        return (urlparse(url).hostname or "").lower().rstrip(".").endswith(".onion")
     except Exception:
         return False
 
@@ -65,12 +69,12 @@ def is_onion_url(url: str) -> bool:
 def normalize_hostname(host: Optional[str]) -> str:
     if not host:
         return ""
-    host = host.lower()
+    host = host.lower().rstrip(".")
     return host[4:] if host.startswith("www.") else host
 
 
-def redact_url(url: str) -> str:
-    if not CONFIG.redact_urls_in_logs:
+def redact_url(url: str, config=CONFIG) -> str:
+    if not config.redact_urls_in_logs:
         return url
     try:
         return f"{urlparse(url).scheme}://[redacted]"
@@ -130,13 +134,13 @@ def get_page_ext(url: str) -> str:
         return ""
 
 
-def is_allowed_page_url(url: str) -> bool:
+def is_allowed_page_url(url: str, config=CONFIG) -> bool:
+    """Apply both the network scope policy and crawler path rules."""
+    if not is_allowed_target_url(url, config):
+        return False
+
     try:
         p = urlparse(url)
-        if p.scheme not in ("http", "https"):
-            return False
-        if not CONFIG.allow_clearnet_targets and not is_onion_url(url):
-            return False
         if get_page_ext(url) in PAGE_IGNORE_EXTENSIONS:
             return False
 
@@ -144,7 +148,7 @@ def is_allowed_page_url(url: str) -> bool:
         if low.startswith(("javascript:", "mailto:", "data:")):
             return False
 
-        if CONFIG.first_page_only:
+        if config.first_page_only:
             m = PAGE_CONTINUATION_RE.search(low)
             if m and int(m.group(1) or m.group(2) or m.group(3)) >= 2:
                 return False

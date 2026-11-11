@@ -1,8 +1,9 @@
 import re
 from typing import List
+
 from bs4 import BeautifulSoup
 
-IOC_PATTERNS = [
+IOC_PATTERN_STRINGS = (
     r'\b(?:t\.me|telegram\.me)/(?:joinchat/)?([A-Za-z0-9_]{5,32})\b',
     r'(?<![\w@.])@[ \t]?([A-Za-z][A-Za-z0-9_]{4,31})\b',
     r'\b05[0-9a-fA-F]{64}\b',
@@ -17,7 +18,9 @@ IOC_PATTERNS = [
     r'\b[48][0-9A-B][1-9A-HJ-NP-Za-km-z]{93}\b',
     r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',
     r'\b[a-z2-7]{16,64}\.onion\b',
-]
+)
+
+IOC_PATTERNS = tuple(re.compile(pattern) for pattern in IOC_PATTERN_STRINGS)
 
 CONTACT_LINK_RE = re.compile(
     r'(?:t\.me|telegram\.me)/([A-Za-z0-9_]{5,32})'
@@ -30,26 +33,27 @@ CONTACT_LINK_RE = re.compile(
 
 
 def extract_iocs(text: str) -> List[str]:
-    """Identifies crypto wallets, communication handles, hashes, and email artifacts."""
-    iocs: List[str] = []
+    """Identify crypto wallets, handles, hashes, emails, and onion addresses."""
+    found: dict[str, None] = {}
     for pattern in IOC_PATTERNS:
-        for m in re.finditer(pattern, text):
-            val = (m.group(1) if m.groups() else m.group(0)).strip()
-            if len(val) >= 5 and val not in iocs:
-                iocs.append(val)
-    return iocs
+        for match in pattern.finditer(text or ""):
+            value = (match.group(1) if match.groups() else match.group(0)).strip()
+            if len(value) >= 5:
+                found.setdefault(value, None)
+    return list(found)
 
 
 def extract_contact_links(soup: BeautifulSoup) -> List[str]:
-    """Extracts contact handles directly from anchor href attributes."""
-    out: List[str] = []
+    """Extract contact handles directly from anchor href attributes."""
+    found: dict[str, None] = {}
     try:
         for tag in soup.find_all("a", href=True):
-            m = CONTACT_LINK_RE.search(tag.get("href") or "")
-            if m:
-                val = next((g for g in m.groups() if g), "").strip()
-                if len(val) >= 5 and val not in out:
-                    out.append(val)
+            match = CONTACT_LINK_RE.search(tag.get("href") or "")
+            if not match:
+                continue
+            value = next((group for group in match.groups() if group), "").strip()
+            if len(value) >= 5:
+                found.setdefault(value, None)
     except Exception:
         pass
-    return out
+    return list(found)

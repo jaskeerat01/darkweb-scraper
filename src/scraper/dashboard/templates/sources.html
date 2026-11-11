@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Sources{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">operations / sources</p>
+    <h1>Sources</h1>
+    <p class="lede">Target health from the last check cycle. Status is recorded by the scraper, not probed by the dashboard.</p>
+  </div>
+  <div class="head-status">
+    <span class="live"><span class="status-dot status-ok" aria-hidden="true"></span> read-only</span>
+  </div>
+</section>
+
+{% if not db_available %}
+  <section class="panel">
+    <div class="panel-head"><span class="panel-label">database not ready</span></div>
+    <div class="panel-body">
+      <p class="muted">The dashboard could not read the alerts database: {{ db_error }}.</p>
+      <a class="btn" href="/">back to alerts</a>
+    </div>
+  </section>
+{% else %}
+  <section class="stats-panel" aria-label="Source statistics">
+    <div class="stat"><span class="stat-value">{{ stats.sites_up }}</span><span class="stat-label">up</span></div>
+    <div class="stat"><span class="stat-value">{{ stats.sites_down }}</span><span class="stat-label">down</span></div>
+    <div class="stat"><span class="stat-value">{{ stats.sites_unknown }}</span><span class="stat-label">unknown</span></div>
+    <div class="stat"><span class="stat-value">{{ sites|length }}</span><span class="stat-label">total sources</span></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <span class="panel-label">targets · {{ sites|length }}</span>
+      <span class="micro muted">onion and clearnet</span>
+    </div>
+    {% if sites %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">source</th>
+              <th scope="col">network</th>
+              <th scope="col">status</th>
+              <th scope="col">uptime 30d</th>
+              <th scope="col">last check</th>
+              <th scope="col">last error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for site in sites %}
+              <tr>
+                <td>
+                  <span class="source-name">{{ site.name or "unknown" }}</span>
+                  <span class="micro muted break">{{ site.url }}</span>
+                </td>
+                <td><span class="net-badge net-{{ site.network }}">{{ site.network }}</span></td>
+                <td>
+                  <span class="status-line">
+                    <span class="status-dot status-{{ site.status if site.status in ['up', 'down'] else 'warn' }}" aria-hidden="true"></span>
+                    {{ site.status or "unknown" }}
+                  </span>
+                </td>
+                <td>
+                  <div class="uptime">
+                    <progress value="{{ site.uptime_30 or 0 }}" max="100"></progress>
+                    <span class="mono">{{ "%.1f"|format(site.uptime_30 or 0) }}%</span>
+                  </div>
+                </td>
+                <td class="mono">{{ site.last_check|utc if site.last_check else "never" }}</td>
+                <td class="muted">{{ site.last_error or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        <h2>No sources tracked.</h2>
+        <p class="muted">Add onion or allowlisted clearnet targets to <code>data/forum_sites.csv</code>.</p>
+        <a class="btn" href="/">back to alerts</a>
+      </div>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}
